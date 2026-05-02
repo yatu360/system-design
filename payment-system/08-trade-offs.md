@@ -297,6 +297,19 @@ Payment Request ─── trace_id: abc-123 ────────────
 | Risk | Team ignores pages, alert fatigue | Silent failures, customers discover issues |
 | **Balance** | Alert on **symptoms** (success rate, latency), not causes (CPU, memory). Investigate causes after paging. |
 
+### Dashboards — What to Visualise
+
+> Grafana connected to **Prometheus** (metrics) and **Loki** (logs). Or Datadog as all-in-one.
+
+| Dashboard | Key Panels | Refresh |
+|-----------|-----------|---------|
+| **Payments — Live** | Success rate (%), p50/p95/p99 latency, TPS, active payment count | 10s |
+| **Payments — Per Merchant** | Failure rate by merchant, chargeback rate (flag >1%), volume | 1 min |
+| **Infrastructure** | CPU, memory, Kafka consumer lag, DB connection pool, Redis hit rate | 30s |
+| **Business** | Revenue (daily/weekly), conversion funnel, refund rate, top error codes | 5 min |
+
+> Keep it simple — **four dashboards** covering live ops, merchant health, infra, and business. Grafana pulls from Prometheus via PromQL queries.
+
 ---
 
 ## Stage 6: Event-Driven Architecture
@@ -396,6 +409,31 @@ Retry (exponential backoff + jitter)
 ---
 
 ## Stage 8: Infrastructure & Scalability
+
+### Hosting — Cloud Provider Choice
+
+| | **AWS** | **GCP** | **Azure** |
+|---|---|---|---|
+| **Market share** | Largest — most mature, widest service catalogue | Strong in data/ML, growing in general compute | Strong enterprise, Microsoft ecosystem |
+| **Payments-relevant services** | SQS, MSK (managed Kafka), RDS, ElastiCache, Lambda, ALB, Route 53, WAF | Pub/Sub, Cloud SQL, Memorystore, Cloud Run, Cloud Armor | Service Bus, Azure SQL, Azure Cache, Functions, Front Door |
+| **Managed Kafka** | MSK (fully managed) | No native — use Confluent Cloud | Event Hubs (Kafka-compatible API) |
+| **UK region** | `eu-west-2` (London) | `europe-west2` (London) | `UK South` (London) |
+| **PCI DSS certified** | Yes | Yes | Yes |
+| **Ecosystem** | Most third-party tooling, largest talent pool | Strongest BigQuery/analytics | Best if existing Microsoft/Azure AD estate |
+
+> **Principal answer:** "I'd default to **AWS** — broadest service catalogue, London region for UK data residency, mature managed services (MSK for Kafka, RDS for PostgreSQL, ElastiCache for Redis). If the company already runs on GCP or Azure, I'd stay — the migration cost outweighs the marginal AWS advantage. The cloud provider choice matters less than using **managed services** consistently."
+
+### Managed vs Self-Hosted — The Real Decision
+
+| Component | Managed | Self-Hosted | Choice | Why |
+|-----------|---------|-------------|--------|-----|
+| **PostgreSQL** | RDS / Cloud SQL | PostgreSQL on EC2/GKE | **Managed** | Automated backups, failover, patching. Team focuses on schema, not OS patches |
+| **Kafka** | MSK / Confluent Cloud | Kafka on K8s (Strimzi) | **Managed** | Kafka operations are notoriously painful — broker rebalancing, partition management. Let the cloud handle it |
+| **Redis** | ElastiCache / Memorystore | Redis on K8s | **Managed** | Failover, patching, cluster scaling. Self-hosted Redis adds on-call burden for minimal control benefit |
+| **Kubernetes** | EKS / GKE / AKS | Self-managed K8s | **Managed** | Control plane management is undifferentiated work. EKS handles upgrades, node management |
+| **Monitoring** | Datadog / CloudWatch | Prometheus + Grafana on K8s | **Depends** | Self-hosted Prometheus is viable and avoids Datadog cost. But Datadog's unified view (metrics + logs + traces) saves engineering time |
+
+> **Trade-off:** Managed services cost more per unit but **reduce operational burden**. For a payment system, the cost of a self-hosted Kafka broker going down at 3 AM is far higher than the MSK bill. **Default to managed, self-host only when you need control the managed service doesn't give you** (custom Kafka configs, specific PostgreSQL extensions).
 
 ### Containerization — Trade-Off
 
