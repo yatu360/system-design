@@ -56,9 +56,28 @@ Exponential Backoff  ──► BEST: doubles wait time each retry (2^n)
                           1s → 2s → 4s → 8s → 16s...
 ```
 
+### Why Add Jitter?
+
+> Exponential backoff alone isn't enough. If 1,000 requests fail at the same time, they all retry at 2s, then 4s, then 8s — same time, every time. This is the **thundering herd**.
+
+**Jitter** adds a **random offset** to each retry interval, spreading retries across time:
+
+```
+Without jitter:  1,000 requests all retry at exactly 2s, 4s, 8s  ← thundering herd
+With jitter:     1,000 requests retry between 1-3s, 2-6s, 4-12s  ← distributed load
+
+Formula: delay = min(cap, base * 2^attempt) + random(0, base * 2^attempt)
+```
+
+| Strategy | Formula | When |
+|----------|---------|------|
+| **Full jitter** | `random(0, base * 2^n)` | Default — best spread |
+| **Equal jitter** | `(base * 2^n / 2) + random(0, base * 2^n / 2)` | When you want a guaranteed minimum wait |
+| **Decorrelated jitter** | `random(base, previous_delay * 3)` | When retries are independent |
+
 ### Key Takeaway
 
-> **Exponential backoff** is the gold standard — it **prevents thundering herd** and gives downstream services time to recover.
+> **Exponential backoff + jitter** is the gold standard — backoff prevents overwhelming a recovering service, jitter prevents the **thundering herd** when many clients retry simultaneously.
 
 ---
 
@@ -90,7 +109,57 @@ Exponential Backoff  ──► BEST: doubles wait time each retry (2^n)
 
 ---
 
-## Pattern 4: Message Queue (Kafka)
+## Pattern 4: Circuit Breaker
+
+**Problem:** A downstream service is failing. Retries keep hitting it, wasting resources and making recovery harder.
+
+**Solution:** Stop calling the failing service entirely. Give it time to recover.
+
+### Three States
+
+```
+         success                                  success
+           │                                        │
+    ┌──────▼──────┐   failures > threshold   ┌──────▼──────┐
+    │   CLOSED    │ ─────────────────────►    │    OPEN     │
+    │ (normal —   │                           │ (fail fast, │
+    │  all calls  │   ◄─────────────────────  │  don't call │
+    │  pass thru) │    probe succeeds         │  downstream)│
+    └─────────────┘                           └──────┬──────┘
+                                                     │
+                                              timer expires
+                                                     │
+                                              ┌──────▼──────┐
+                                              │  HALF-OPEN  │
+                                              │ (let ONE    │
+                                              │  request    │
+                                              │  through)   │
+                                              └─────────────┘
+                                              success → CLOSED
+                                              failure → OPEN
+```
+
+| State | Behaviour | When |
+|-------|-----------|------|
+| **Closed** | All requests pass through normally | Service is healthy |
+| **Open** | Requests **fail immediately** — no call to downstream | Failure threshold exceeded (e.g., 5 failures in 30s) |
+| **Half-Open** | Let **one probe request** through to test recovery | After a cooldown timer expires |
+
+### Per-Merchant Circuit Breakers
+
+> For webhook delivery, use **per-merchant circuit breakers** — one merchant's failing endpoint shouldn't block notifications to all other merchants.
+
+### When to Use
+
+- **Between services**: Payment Service → PSP (if PSP is down, stop hammering it)
+- **Webhook delivery**: per-merchant breakers prevent one bad endpoint from affecting others
+- **Combined with retry**: retry handles transient errors, circuit breaker handles sustained failures
+
+> **Key insight:** Retries help when a service **might recover per-request**. Circuit breakers help when a service is **down for a while**. Use both together.
+
+---
+
+## Pattern 5: Message Queue (Kafka)
 
 ```
 Payment Event ───► Kafka (99.999% availability)
@@ -113,7 +182,7 @@ Payment Event ───► Kafka (99.999% availability)
 
 ---
 
-## Pattern 5: Dead Letter Queue (DLQ)
+## Pattern 6: Dead Letter Queue (DLQ)
 
 **For messages that repeatedly fail processing:**
 
@@ -140,7 +209,10 @@ Normal Queue ───► Consumer fails ───► Retry N times ───►
 |------|---------|
 | **Redundancy** | Resilience during internal system failures |
 | **Kafka** | Persist messages — payment guarantee |
-| **Retry + Timeout + Fallback** | Handle transient failures gracefully |
+| **Retry + Backoff + Jitter** | Handle transient failures without thundering herd |
+| **Timeout** | Prevent indefinite waiting on hung services |
+| **Fallback** | Graceful degradation when acceptable |
+| **Circuit Breaker** | Stop calling failing services, let them recover |
 | **Message Queues** | Avoid **overloading** services |
 | **Idempotency** | Exactly-once processing guarantee |
 | **Dead Letter Queue** | Isolate and debug persistent failures |

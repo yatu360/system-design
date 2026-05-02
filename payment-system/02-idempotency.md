@@ -20,56 +20,61 @@ Without idempotency, **timeouts + retries = double payments**. This is the most 
 
 ---
 
-## How It Works (4 Steps)
+## How It Works — Two-Layer Idempotency
+
+> Two layers: **Redis** catches 99% of duplicates in sub-millisecond. **DB unique constraint** is the ultimate safety net.
 
 ```
-┌──────────┐         ┌──────────────────┐         ┌────────────┐
-│  Client   │         │  Payment Service  │         │  Database   │
-└─────┬────┘         └────────┬─────────┘         └──────┬─────┘
-      │                       │                          │
-      │  1. Generate UUID     │                          │
-      │     (idempotency key) │                          │
-      │                       │                          │
-      │  2. Send request      │                          │
-      │  ┌─────────────────►  │                          │
-      │  │ HTTP Header:       │                          │
-      │  │ Idempotency-Key:   │                          │
-      │  │ "abc-123-def"      │                          │
-      │                       │  3. INSERT with          │
-      │                       │     unique key constraint │
-      │                       │  ─────────────────────►  │
-      │                       │                          │
-      │                       │     ┌─ New key? INSERT   │
-      │                       │     │  succeeds           │
-      │                       │     │                     │
-      │                       │     └─ Duplicate key?     │
-      │                       │        INSERT fails       │
-      │                       │        (constraint violation)
-      │                       │        Return original    │
-      │  4. Response          │        response           │
-      │  ◄─────────────────   │                          │
-      │                       │                          │
+┌──────────┐         ┌──────────────────┐      ┌─────────┐      ┌────────────┐
+│  Client   │         │  Payment Service  │      │  Redis   │      │  Database   │
+└─────┬────┘         └────────┬─────────┘      └────┬────┘      └──────┬─────┘
+      │                       │                     │                  │
+      │  1. Generate UUID     │                     │                  │
+      │     (idempotency key) │                     │                  │
+      │                       │                     │                  │
+      │  2. Send request      │                     │                  │
+      │  ┌─────────────────►  │                     │                  │
+      │  │ HTTP Header:       │                     │                  │
+      │  │ Idempotency-Key:   │                     │                  │
+      │  │ "abc-123-def"      │                     │                  │
+      │                       │  3. SETNX check     │                  │
+      │                       │  ──────────────────► │                  │
+      │                       │                     │                  │
+      │                       │  ┌─ Key exists?      │                  │
+      │                       │  │  DUPLICATE ──────►│  Return cached   │
+      │                       │  │  (sub-ms reject)  │  result          │
+      │                       │  │                   │                  │
+      │                       │  └─ Key new?         │                  │
+      │                       │     SET with TTL     │                  │
+      │                       │                     │                  │
+      │                       │  4. INSERT payment   │                  │
+      │                       │  ──────────────────────────────────►   │
+      │                       │                     │                  │
+      │                       │     ┌─ New key? INSERT succeeds        │
+      │                       │     │                │                  │
+      │                       │     └─ Duplicate?    │                  │
+      │                       │        Constraint    │                  │
+      │                       │        violation     │                  │
+      │                       │        (safety net)  │                  │
+      │                       │                     │                  │
+      │  5. Response          │                     │                  │
+      │  ◄─────────────────   │                     │                  │
 ```
 
-### Step-by-Step
+### Layer 1: Redis SETNX (Speed)
 
-1. **Client generates a UUID** — this becomes the **idempotency key**
-2. **Client sends request** with the key in the **HTTP header**
-3. **Payment Service uses the key as the payment order ID** and attempts DB insert
-   - **New key** → INSERT succeeds → process payment normally
-   - **Duplicate key** → **unique constraint violation** → return the original response (no re-processing)
-4. **Client receives response** — same result whether it's attempt 1 or attempt 5
+```
+SETNX idempotency:{key} {payment_id}    ← atomic "set if not exists"
+EXPIRE idempotency:{key} 86400           ← TTL: 24 hours
+```
 
----
+- **Sub-millisecond** duplicate detection
+- Catches **99% of duplicates** — click-click-click, network retries, timeout resends
+- If Redis is down, **fall through to Layer 2** — system still works
 
-## The Database Trick
-
-> The **unique key constraint** of the database enforces the **"Exactly Once" guarantee**.
+### Layer 2: DB Unique Constraint (Safety Net)
 
 ```sql
--- The idempotency key IS the payment order ID
--- DB unique constraint prevents duplicates automatically
-
 CREATE TABLE payment_orders (
     id UUID PRIMARY KEY,          -- ← This IS the idempotency key
     amount DECIMAL NOT NULL,
@@ -81,7 +86,21 @@ CREATE TABLE payment_orders (
 -- Second INSERT with same UUID → constraint violation → no double charge
 ```
 
-**No distributed locks needed.** No complex consensus. Just a **database unique constraint**.
+- **Ultimate guarantee** — even if Redis fails, evicts the key, or has a split-brain
+- No distributed locks needed — just a database unique constraint
+- The idempotency key **IS** the payment order ID (same UUID)
+
+### Why Two Layers?
+
+| Scenario | Redis | DB | Result |
+|----------|-------|-----|--------|
+| Normal duplicate (click-click) | Catches it in **<1ms** | Never reached | Fast reject |
+| Redis down | Misses it | **Catches it** via constraint | Still safe |
+| Redis key evicted (TTL) | Misses it | **Catches it** via constraint | Still safe |
+| Redis split-brain | Might miss it | **Catches it** via constraint | Still safe |
+| First request | Sets key | INSERT succeeds | Payment processed |
+
+> **Redis is an optimisation. The DB is the guarantee.** If you can only have one, keep the DB constraint.
 
 ---
 
@@ -92,7 +111,8 @@ CREATE TABLE payment_orders (
 | **Who generates the key?** | **Client** | Client controls retry behavior and knows which requests are duplicates |
 | **What format?** | **UUID** | Universally unique, no coordination needed |
 | **Where is it sent?** | **HTTP Header** | Clean separation from business payload |
-| **How is it enforced?** | **DB unique key constraint** | Simple, battle-tested, atomic |
+| **Layer 1 (speed)?** | **Redis SETNX** | Sub-ms duplicate detection, catches 99% of duplicates |
+| **Layer 2 (safety)?** | **DB unique constraint** | Ultimate guarantee — works even if Redis fails |
 | **Key = Payment ID?** | **Yes** | Same UUID serves as both idempotency key and order ID |
 
 ---
@@ -123,7 +143,9 @@ Request ──► Times out ──► Client retries with SAME idempotency key
 
 - **Idempotency key** = UUID generated by client
 - **HTTP header** = where the key travels
-- **DB unique constraint** = enforcement mechanism
+- **Two-layer idempotency** = Redis SETNX (speed) + DB unique constraint (safety)
+- **Redis SETNX** = "Set if Not eXists" — atomic, sub-millisecond duplicate check
+- **DB unique constraint** = ultimate safety net — works even if Redis fails
 - **Exactly-once guarantee** = the outcome
 - **Same key = same payment order ID** = the implementation trick
 - **Timeout + retry + idempotency** = the trifecta that prevents double-charging

@@ -179,3 +179,5 @@ This is clearly what they're scoring hardest on. Don't just name a technology â€
 | **05-recruiter-briefing.md** | **This file â€” system design focus** |
 | [06-values-interview.md](06-values-interview.md) | Values interview (STAR framework) |
 | [07-data-layer.md](07-data-layer.md) | SQL vs NoSQL, PostgreSQL, Redis, data warehouse |
+| [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, circuit breakers, observability, infra |
+| [09-requirements-fr-nfr.md](09-requirements-fr-nfr.md) | Functional & non-functional requirements with targets |

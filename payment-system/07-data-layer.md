@@ -34,6 +34,128 @@
 
 ---
 
+## CAP Theorem — The Fundamental Constraint
+
+### What It Says
+
+> In a **distributed system**, when a **network partition** (P) occurs, you must choose between **Consistency** (C) and **Availability** (A). You cannot have all three simultaneously.
+
+```
+                    C
+                 Consistency
+                 "Every read gets the
+                  most recent write"
+                   /          \
+                  /            \
+                 /              \
+                /    PICK TWO    \
+               /    (when P hits) \
+              /                    \
+             A ──────────────────── P
+        Availability           Partition Tolerance
+        "Every request          "System works despite
+         gets a response"        network splits"
+```
+
+### The Three Guarantees
+
+| Letter | Guarantee | In Plain English |
+|--------|-----------|-----------------|
+| **C** — Consistency | Every read receives the **most recent write** or an error | If you just paid £50, your balance shows £50 deducted — not the old balance |
+| **A** — Availability | Every request receives a **non-error response** (no guarantee it's the latest) | The system always responds, even if the data might be slightly stale |
+| **P** — Partition Tolerance | System continues to operate despite **network failures** between nodes | If the connection between EU and US data centres drops, the system doesn't crash |
+
+### The Reality: It's Not a Choice of Two — It's a Spectrum
+
+> **Common misconception:** "Pick two out of three."
+>
+> **Reality:** Network partitions **will happen** in any distributed system. P is not optional. So the real choice is: **when a partition occurs, do you sacrifice consistency or availability?**
+
+```
+Partition happens ──► You MUST choose:
+
+    Option 1: CP (Consistency + Partition Tolerance)
+    ──► Reject requests until partition heals
+    ──► "I'd rather return an error than give you wrong data"
+    ──► Example: Payment balance check → MUST be correct
+
+    Option 2: AP (Availability + Partition Tolerance)  
+    ──► Serve requests with potentially stale data
+    ──► "I'd rather give you slightly old data than nothing"
+    ──► Example: Dashboard showing transaction count → a few seconds stale is fine
+```
+
+### CAP Applied to Our Payment System
+
+| Component | CAP Choice | Why | What Happens During Partition |
+|-----------|-----------|-----|------------------------------|
+| **Payment Service (writes)** | **CP** | A wrong balance or double charge is unacceptable. Correctness over availability | Returns error → client retries with idempotency key. Better to reject than corrupt |
+| **Wallet Balance** | **CP** | Balance must be accurate NOW. Serving a stale balance could allow overspending | Read fails or blocks until consistent state is confirmed |
+| **Ledger** | **CP** | Financial records must be sequentially consistent. Out-of-order entries break auditing | Writes queue until partition heals, preserving order |
+| **Redis Cache** | **AP** | Cache is a convenience, not source of truth. Stale cache → fall through to PostgreSQL | Serves potentially stale data. Worst case: idempotency check misses → PostgreSQL catches it |
+| **Dashboard** | **AP** | Showing transactions from 5 seconds ago is fine. Showing nothing is worse | Serves slightly stale aggregations. User sees data, just not real-time |
+| **Webhook Dispatcher** | **AP** | Better to deliver a notification late than not at all. DLQ catches failures | Continues dispatching from queue. May deliver out of order — merchants handle with timestamps |
+| **Sports API** | **AP** | A score that's 2 seconds behind is fine. An error page is not | Serves last-known data. Users get stale scores rather than errors |
+
+### CP vs AP — Database Mapping
+
+| Database | CAP Classification | Why |
+|----------|-------------------|-----|
+| **PostgreSQL** (single node) | **CA** (no partition in single node) | Single node = no network partition. Full consistency + availability. But no horizontal distribution |
+| **PostgreSQL** (with sync replicas) | **CP** | Sync replication blocks writes during partition → consistent but may become unavailable |
+| **PostgreSQL** (with async replicas) | **AP** for reads, **CP** for writes | Reads from replica may be stale (AP). Writes to primary are consistent (CP) |
+| **Redis** | **AP** | Designed for speed. Redis Cluster uses async replication — during partition, reads may be stale |
+| **Redis Sentinel** | **CP** | Sentinel promotes replica to master during failure, but writes rejected during failover window |
+| **MongoDB** | **CP** by default | Writes go to primary. During partition, minority side can't accept writes |
+| **DynamoDB** | **AP** by default, **CP** optional | Eventually consistent reads by default. Can request strongly consistent reads (CP) at higher cost/latency |
+| **Cassandra** | **AP** | Tunable consistency, but designed availability-first. Great for write-heavy, geo-distributed workloads |
+| **CockroachDB** | **CP** | Distributed SQL — ACID across nodes but sacrifices availability during partition |
+
+### The Principal-Level Nuance: CAP Per Operation, Not Per System
+
+> A mid-level engineer says: "Our system is CP."
+>
+> A principal engineer says: "Our system makes **different CAP trade-offs per operation**."
+
+```
+Payment System
+│
+├── Payment creation     → CP  (reject if inconsistent)
+├── Balance lookup       → CP  (must be accurate)
+├── Idempotency check    → AP at Redis layer, CP at PostgreSQL layer
+├── Dashboard reads      → AP  (eventual consistency acceptable)
+├── Webhook delivery     → AP  (deliver late rather than not at all)
+└── Ledger append        → CP  (ordering and consistency mandatory)
+```
+
+> **This is the key interview insight.** You don't pick CP or AP for the whole system. You pick it **per data path** based on the cost of being wrong.
+
+### The PACELC Extension (Beyond CAP)
+
+> CAP only talks about what happens **during a partition**. But what about normal operation?
+
+**PACELC:** If **P**artition → choose **A** or **C**. **E**lse (normal operation) → choose **L**atency or **C**onsistency.
+
+| Component | During Partition (PAC) | Normal Operation (ELC) |
+|-----------|----------------------|----------------------|
+| **Payment writes** | Choose **C** (reject if inconsistent) | Choose **C** (strong consistency, accept higher latency) |
+| **Dashboard reads** | Choose **A** (serve stale data) | Choose **L** (eventual consistency, serve fast from replica) |
+| **Redis cache** | Choose **A** (serve cached value) | Choose **L** (sub-ms reads, may be stale) |
+
+> **Why mention PACELC?** It shows the interviewer you understand that consistency vs latency trade-offs exist **even when everything is healthy** — not just during failures. This is a daily operational reality, not a theoretical edge case.
+
+### CAP Quick Reference for Interview
+
+| Question | Answer |
+|----------|--------|
+| "What is CAP theorem?" | In a distributed system during a network partition, you must choose between consistency and availability. Partition tolerance is non-negotiable. |
+| "Is your payment system CP or AP?" | **It's both — per operation.** Payment writes and balances are CP (correctness over availability). Dashboard and cache are AP (availability over freshness). |
+| "Why not just make everything CP?" | Because users would see errors on the dashboard when a minor network blip occurs. The dashboard doesn't need real-time accuracy — showing a slightly stale view is better than showing nothing. |
+| "Why not just make everything AP?" | Because showing a stale wallet balance could allow a merchant to withdraw money they don't have. Financial data must be correct NOW. |
+| "How does this affect your database choice?" | PostgreSQL (CP) for the payment core — I need ACID and strong consistency. Redis (AP) for caching — speed matters more than freshness. DynamoDB/Cassandra (AP) for the sports API — high availability and scale over strict consistency. |
+
+---
+
 ## Which Database Where? (Payment System Data Map)
 
 ```
@@ -119,7 +241,63 @@ ledger_entries (
 > Never UPDATE or DELETE a ledger row. Corrections are new entries (reversals/adjustments). This gives you a complete, tamper-evident audit trail.
 
 **Status is a state machine.**
-> `PENDING → PROCESSING → SUCCESS | FAILED | REFUNDED`. Never skip states. Each transition is a new ledger entry.
+> `PENDING → AUTHORIZED → CAPTURED → SETTLED → REFUNDED`. Plus dispute states: `DISPUTED → CB_WON | CB_LOST`. Never skip states. Each transition is a new ledger entry. See [00-payment-system-overview.md](00-payment-system-overview.md) for full state machine.
+
+### Double-Entry Bookkeeping
+
+> Every financial transaction creates **two ledger entries** that must balance: total debits = total credits. This is the foundation of financial accounting and a **principal-level expectation** in a payments interview.
+
+**The rule:** For every payment, money leaves one account and enters another. The ledger records **both sides**.
+
+```
+Payment of £100 from Customer → Merchant:
+
+    Entry 1 (DEBIT):  Customer's account   -£100
+    Entry 2 (CREDIT): Merchant's account    +£100
+    ─────────────────────────────────────────────
+    Net:                                     £0    ← MUST always balance
+
+Refund of £100 from Merchant → Customer:
+
+    Entry 3 (DEBIT):  Merchant's account    -£100
+    Entry 4 (CREDIT): Customer's account    +£100
+    ─────────────────────────────────────────────
+    Net:                                     £0    ← Still balanced
+```
+
+**Schema that enforces this:**
+
+```sql
+ledger_entries (
+    id              UUID PRIMARY KEY,
+    payment_id      UUID NOT NULL REFERENCES payment_orders(id),
+    account_id      UUID NOT NULL,           -- which account (customer, merchant, platform)
+    entry_type      VARCHAR(20) NOT NULL,    -- DEBIT / CREDIT
+    amount          DECIMAL(19,4) NOT NULL,  -- always positive
+    balance_after   DECIMAL(19,4) NOT NULL,  -- running balance for this account
+    created_at      TIMESTAMP NOT NULL       -- append-only, never updated
+);
+
+-- For every payment_id, SUM of DEBITs MUST equal SUM of CREDITs
+-- This is validated at application level and audited in reconciliation
+```
+
+**Why double-entry matters:**
+- **Self-auditing** — if debits ≠ credits for any transaction, something is wrong
+- **Reconciliation** — match internal ledger against PSP/bank statements
+- **Regulatory requirement** — FCA expects proper financial record-keeping
+- **Debugging** — trace exactly where money went when something looks wrong
+
+**Platform fees example (3 entries):**
+```
+Customer pays £100, platform takes 2.5% fee:
+
+    Entry 1 (DEBIT):  Customer's account    -£100.00
+    Entry 2 (CREDIT): Merchant's account    +£97.50
+    Entry 3 (CREDIT): Platform revenue      +£2.50
+    ────────────────────────────────────────────────
+    Net:                                     £0.00
+```
 
 ### Scaling PostgreSQL
 
@@ -225,6 +403,50 @@ PostgreSQL ──► Change Data Capture (CDC) ──► Kafka ──► Data Wa
 ```
 
 > **CDC (Change Data Capture):** Streams every INSERT/UPDATE from PostgreSQL to Kafka without impacting DB performance. No batch ETL jobs — data arrives in near real-time.
+
+### Reconciliation — What It Actually Means
+
+> Mentioned in many docs but never explained. This is a **daily operational process** at any payment company.
+
+**Reconciliation** = matching your **internal ledger** against **external records** (PSP settlement reports, bank statements) to find discrepancies.
+
+```
+Your Ledger (source of truth)          PSP Settlement Report (external)
+─────────────────────────────          ──────────────────────────────
+Payment abc-123:  £50.00 SUCCESS       Payment abc-123:  £50.00 SETTLED
+Payment def-456:  £30.00 SUCCESS       Payment def-456:  £30.00 SETTLED
+Payment ghi-789:  £20.00 SUCCESS       Payment ghi-789:  ??? MISSING     ← discrepancy!
+Payment ???:      ??? MISSING          Payment jkl-012:  £75.00 SETTLED   ← discrepancy!
+```
+
+**Types of discrepancy:**
+- **Missing from PSP** — we think it succeeded, PSP has no record → investigate
+- **Missing from us** — PSP settled a payment we don't have → possible bug or race condition
+- **Amount mismatch** — we say £50, PSP says £49.50 → FX conversion or fee issue
+- **Status mismatch** — we say SUCCESS, PSP says FAILED → dangerous, needs immediate resolution
+
+**Where it runs:** Data warehouse, not the production database. Reconciliation queries scan millions of rows and must never compete with live payments.
+
+### Tokenization
+
+> Replace sensitive card data with an opaque **token**. The real card number is stored **only at the PSP**.
+
+```
+Customer's card: 4242 4242 4242 4242
+                         │
+                         ▼
+PSP tokenizes:  tok_8a3f2b1c9d4e     ← stored in our DB
+                         │
+Real card number:        │ stored ONLY at PSP (in PCI-compliant vault)
+                         │
+Next payment:   send tok_8a3f2b1c9d4e to PSP → PSP looks up real card → processes
+```
+
+**Why tokenization matters:**
+- Our system **never stores card numbers** → reduces PCI DSS scope dramatically
+- Enables **card-on-file** for returning customers (one-click payments)
+- Tokens are **merchant-specific** — stolen token is useless to another merchant
+- PSP handles token lifecycle (expiry, card updates)
 
 ---
 
