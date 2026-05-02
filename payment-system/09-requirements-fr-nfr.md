@@ -100,25 +100,25 @@ Does that match the scope, or should I include anything else?"
 | **NFR17** | **Encryption in transit** | TLS 1.2+ for all external, mTLS for internal | Data integrity and confidentiality. mTLS for zero-trust internal network |
 | **NFR18** | **UK GDPR compliance** | Data residency, right to erasure, consent | UK customer data resides in UK data centres. Right to erasure conflicts with append-only ledger — resolved via pseudonymization (see below) |
 | **NFR19** | **Rate limiting** | Per API key, per merchant | Abuse prevention, DDoS mitigation, fair usage |
-| **NFR19a** | **PSD2 / SCA compliance** | 3DS mandatory for UK card payments | PSP handles 3DS2 flow. Two-factor auth (biometric/OTP). Exemptions for low-value (<£30), recurring, trusted merchants. Shifts fraud liability to issuer |
-| **NFR19b** | **FCA regulatory compliance** | Financial record-keeping, consumer protection | Double-entry append-only ledger, daily reconciliation, full audit trails. FCA is the UK's financial conduct authority |
+| **NFR20** | **PSD2 / SCA compliance** | 3DS mandatory for UK card payments | PSP handles 3DS2 flow. Two-factor auth (biometric/OTP). Exemptions for low-value (<£30), recurring, trusted merchants. Shifts fraud liability to issuer |
+| **NFR21** | **FCA regulatory compliance** | Financial record-keeping, consumer protection | Double-entry append-only ledger, daily reconciliation, full audit trails. FCA is the UK's financial conduct authority |
 
 ### Observability
 
 | # | Requirement | Target | Why |
 |---|------------|--------|-----|
-| **NFR20** | **Monitoring** | Technical metrics (CPU, memory, error rate) + business metrics (success rate, conversion) | Can't fix what you can't see. Business metrics catch revenue-impacting issues that technical metrics miss |
-| **NFR21** | **Distributed tracing** | Every payment request traceable end-to-end | When a payment takes 10s, you need to know which hop is slow — PSP? DB? Kafka? |
-| **NFR22** | **Alerting** | P1–P4 severity levels with escalation paths | Right person, right urgency. Payment success rate < 90% = page immediately |
-| **NFR23** | **Audit logging** | Every state change logged with actor, timestamp, before/after | Compliance, debugging, dispute resolution |
+| **NFR22** | **Monitoring** | Technical metrics (CPU, memory, error rate) + business metrics (success rate, conversion) | Can't fix what you can't see. Business metrics catch revenue-impacting issues that technical metrics miss |
+| **NFR23** | **Distributed tracing** | Every payment request traceable end-to-end | When a payment takes 10s, you need to know which hop is slow — PSP? DB? Kafka? |
+| **NFR24** | **Alerting** | P1–P4 severity levels with escalation paths | Right person, right urgency. Payment success rate < 90% = page immediately |
+| **NFR25** | **Audit logging** | Every state change logged with actor, timestamp, before/after | Compliance, debugging, dispute resolution |
 
 ### Reliability
 
 | # | Requirement | Target | Why |
 |---|------------|--------|-----|
-| **NFR24** | **Idempotency** | Every write operation is idempotent | Retries and duplicates must never cause double-charges |
-| **NFR25** | **Graceful degradation** | Non-critical services can fail without stopping payments | Webhook dispatcher down? Payments still process. Dashboard down? Payments still process |
-| **NFR26** | **Disaster recovery** | RTO < 15 min (Recovery Time Objective) | How fast can we restore service after a region failure? |
+| **NFR26** | **Idempotency** | Every write operation is idempotent (two-layer: Redis SETNX + DB constraint) | Retries and duplicates must never cause double-charges |
+| **NFR27** | **Graceful degradation** | Non-critical services can fail without stopping payments | Webhook dispatcher down? Payments still process. Dashboard down? Payments still process |
+| **NFR28** | **Disaster recovery** | RTO < 15 min (Recovery Time Objective) | How fast can we restore service after a region failure? |
 
 ---
 

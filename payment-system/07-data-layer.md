@@ -456,7 +456,7 @@ Next payment:   send tok_8a3f2b1c9d4e to PSP → PSP looks up real card → proc
 
 | Use Case | Why | Example DB |
 |----------|-----|------------|
-| **Sports API** (from recruiter brief) | Read-heavy, flexible schema, high throughput, eventual consistency is fine | **MongoDB** or **DynamoDB** |
+| **Dashboard / analytics read model** | Read-heavy, flexible schema, high throughput, eventual consistency is fine | **MongoDB** or **DynamoDB** |
 | **Event log / activity stream** | Append-only, massive write throughput, no joins needed | **Cassandra** or **Kafka** |
 | **User profiles / preferences** | Schema varies per user, read-heavy | **MongoDB** or **DynamoDB** |
 | **Real-time leaderboards** | Sorted sets, counters, sub-ms reads | **Redis** |
@@ -470,7 +470,7 @@ Next payment:   send tok_8a3f2b1c9d4e to PSP → PSP looks up real card → proc
 | **Ledger / audit trail** | Need referential integrity, complex queries for reconciliation |
 | **Refund processing** | Requires atomic debit + credit across accounts |
 
-> **Interview insight:** If the interviewer asks about the **Sports API**, that's where you can reach for NoSQL. Real-time scores, match data, and player stats are read-heavy, schema-flexible, and tolerance for eventual consistency is higher. **Payments are the opposite.**
+> **Interview insight:** If the interviewer asks about a **read-heavy, non-financial** component (like a dashboard read model or a public-facing data API), that's where you can reach for NoSQL. High read throughput, flexible schema, and tolerance for eventual consistency make it a natural fit. **Payments are the opposite.**
 
 ---
 
@@ -504,4 +504,4 @@ Next payment:   send tok_8a3f2b1c9d4e to PSP → PSP looks up real card → proc
 
 ---
 
-**Next:** [04-interview-cheat-sheet.md](04-interview-cheat-sheet.md) — Everything on one page
+**Next:** [08-trade-offs.md](08-trade-offs.md) — Stage-by-stage trade-offs for every decision

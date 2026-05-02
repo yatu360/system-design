@@ -175,3 +175,4 @@ Layer 8: MONITORING        ──► "We know when something is wrong"
 | [07-data-layer.md](07-data-layer.md) | SQL vs NoSQL, CAP theorem, double-entry ledger, reconciliation, tokenization |
 | [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, circuit breakers, observability, infra |
 | [09-requirements-fr-nfr.md](09-requirements-fr-nfr.md) | Functional & non-functional requirements with targets |
+| [10-requirement-gathering-questions.md](10-requirement-gathering-questions.md) | Checkout.com-specific requirement gathering questions |

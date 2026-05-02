@@ -155,7 +155,7 @@ Customer ──► Merchant site ──► REDIRECT to PSP hosted page
 | How do you handle authentication? | **OAuth 2.0 + JWT** for merchants/dashboard, **mTLS** for internal services, **API keys** for identification |
 | How do you prevent double-charging? | **Idempotency keys** — Redis SETNX + DB unique constraints |
 | How do you handle SCA in the UK? | **3DS2** via PSP, mandatory under **PSD2**. Exemptions for low-value and recurring |
-| How do you handle GDPR right-to-erasure? | **Pseudonymization** — delete PII mapping, ledger entries remain anonymized |
+| How do you handle UK GDPR right-to-erasure? | **Pseudonymization** — delete PII mapping, ledger entries remain anonymized |
 | What compliance standards matter in the UK? | **PCI DSS** (card data) + **PSD2/SCA** (authentication) + **UK GDPR** (privacy) + **FCA** (financial conduct) |
 
 ---

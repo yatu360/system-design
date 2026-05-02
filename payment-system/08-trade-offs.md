@@ -24,7 +24,7 @@
 | Requirement | Typical Target | Why This Number |
 |-------------|---------------|-----------------|
 | **Throughput** | ~1,000–10,000 TPS (depending on scale) | Black Friday / peak events can 10x steady state |
-| **Latency** | p99 < 500ms for payment initiation | Customer is waiting at checkout — every second = drop-off |
+| **Latency** | p50 < 200ms, p95 < 500ms, p99 < 1s for payment initiation | Customer is waiting at checkout — every second = drop-off. Accept fast (sync), process async |
 | **Availability** | 99.99% (4 nines = ~52 min downtime/year) | Downtime = lost revenue for every merchant on the platform |
 | **Durability** | Zero data loss for financial transactions | Regulatory and legal requirement — you cannot lose payment records |
 | **Consistency** | Strong for payments, eventual acceptable for dashboard | Money must be correct NOW; dashboard can lag by seconds |
@@ -103,7 +103,7 @@ Payment Service ──► Webhook Dispatcher
                  200 OK    Failure
                  (done)       │
                               ▼
-                         Retry with exponential backoff
+                         Retry with exponential backoff + jitter
                          (max 5 attempts)
                               │
                          Still failing?
@@ -242,7 +242,7 @@ Services ──► Database     (private subnet, security groups, no public acce
 | Category | Metric | Why | Alert Threshold |
 |----------|--------|-----|-----------------|
 | **Technical** | API failure rate (5xx) | Service health | > 1% of requests |
-| **Technical** | p50 / p95 / p99 latency | Performance degradation | p99 > 500ms |
+| **Technical** | p50 / p95 / p99 latency | Performance degradation | p99 > 1s |
 | **Technical** | CPU usage | Capacity planning | > 80% sustained |
 | **Technical** | Memory usage | OOM risk | > 85% |
 | **Technical** | Kafka consumer lag | Processing falling behind | > 10K messages |

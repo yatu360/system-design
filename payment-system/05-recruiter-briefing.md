@@ -9,7 +9,7 @@
 
 ### Format
 - **90 minutes**, whiteboard exercise
-- Topic: Designing a system for a **Payment API + Dashboard** and a **Sports API**
+- Topic: Designing a system for a **Payment API + Dashboard**
 - You'll receive **written instructions** â€” take ~5 minutes to read carefully before starting
 
 ---
@@ -27,7 +27,7 @@
 | **Sync vs Async** | Which flows need **real-time** responses? (payment initiation) Which can be **asynchronous**? (notifications, reconciliation, reports) |
 | **Scale & Region** | Single region or **multi-regional**? Where are the users? What's the growth trajectory? |
 | **Hosting** | Cloud provider preference? (AWS / GCP / Azure) On-prem constraints? Managed services or self-hosted? |
-| **Compliance** | PCI DSS scope? GDPR requirements? Data residency laws for multi-region? |
+| **Compliance** | PCI DSS scope? UK GDPR requirements? Data residency laws for multi-region? |
 
 **How to do it:**
 - Frame each question as **"I'm assuming X â€” is that correct?"** â€” validates without sounding lost
@@ -92,7 +92,7 @@
 
 #### 7. Fault Tolerance & Resiliency
 - [ ] **Asynchronous communication** to handle failures
-- [ ] Retry strategies (exponential backoff)
+- [ ] Retry strategies (exponential backoff + jitter)
 - [ ] Circuit breakers
 - [ ] Dead letter queues
 - [ ] Idempotency (prevent double-processing)
@@ -119,7 +119,7 @@ This is clearly what they're scoring hardest on. Don't just name a technology â€
 |-------|---------------|---------------------------|
 | **Mid-Level** | "I'd use Kafka" | Knows the tool, doesn't know why |
 | **Senior** | "Kafka because we need guaranteed delivery and decoupled consumers. Trade-off is operational complexity." | Understands trade-offs |
-| **Principal** | "Kafka for payment events because losing a payment is unacceptable â€” 99.999% availability vs our business services at ~99.9%. For the sports API where data is ephemeral, SQS is simpler and sufficient. I'm choosing complexity only where the cost of failure justifies it." | **Reasons per context, doesn't apply one-size-fits-all** |
+| **Principal** | "Kafka for payment events because losing a payment is unacceptable â€” 99.999% availability vs our business services at ~99.9%. For webhook dispatch where delivery order is less critical, SQS is simpler and sufficient. I'm choosing complexity only where the cost of failure justifies it." | **Reasons per context, doesn't apply one-size-fits-all** |
 
 **The formula for every architectural choice:**
 
@@ -140,7 +140,7 @@ This is clearly what they're scoring hardest on. Don't just name a technology â€
 
 | Priority | Topic | Reference |
 |----------|-------|-----------|
-| **P0** | Requirement gathering questions for payment + sports API | Practice out loud |
+| **P0** | Requirement gathering questions for Payment API + Dashboard | Practice out loud |
 | **P0** | API design (REST + async flows) | [00-payment-system-overview.md](00-payment-system-overview.md) |
 | **P0** | Idempotency & exactly-once delivery | [02-idempotency.md](02-idempotency.md) |
 | **P0** | Fault tolerance patterns (retry, timeout, DLQ) | [01-reliability-patterns.md](01-reliability-patterns.md) |
@@ -162,7 +162,7 @@ This is clearly what they're scoring hardest on. Don't just name a technology â€
 | Priority | Topic |
 |----------|-------|
 | **P2** | CAP theorem and how it applies to payment systems |
-| **P2** | CQRS / Event sourcing for sports data |
+| **P2** | CQRS / Event sourcing for payment data |
 | **P2** | Cost optimization and capacity planning |
 
 ---
@@ -172,12 +172,13 @@ This is clearly what they're scoring hardest on. Don't just name a technology â€
 | File | Content |
 |------|---------|
 | [00-payment-system-overview.md](00-payment-system-overview.md) | Architecture, components, payment flow |
-| [01-reliability-patterns.md](01-reliability-patterns.md) | Retry, timeout, fallback, Kafka, DLQ |
-| [02-idempotency.md](02-idempotency.md) | Exactly-once guarantee, UUID keys |
-| [03-security.md](03-security.md) | Encryption, TLS, PCI DSS, access controls |
+| [01-reliability-patterns.md](01-reliability-patterns.md) | Retry + jitter, timeout, fallback, circuit breaker, Kafka, DLQ |
+| [02-idempotency.md](02-idempotency.md) | Two-layer idempotency (Redis SETNX + DB constraint) |
+| [03-security.md](03-security.md) | Encryption, TLS/mTLS, PCI DSS, tokenization, UK compliance |
 | [04-interview-cheat-sheet.md](04-interview-cheat-sheet.md) | Quick-reference cheat sheet |
 | **05-recruiter-briefing.md** | **This file â€” system design focus** |
 | [06-values-interview.md](06-values-interview.md) | Values interview (STAR framework) |
-| [07-data-layer.md](07-data-layer.md) | SQL vs NoSQL, PostgreSQL, Redis, data warehouse |
-| [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, circuit breakers, observability, infra |
+| [07-data-layer.md](07-data-layer.md) | SQL vs NoSQL, CAP theorem, PostgreSQL, Redis, data warehouse |
+| [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, hosting, observability, infra |
 | [09-requirements-fr-nfr.md](09-requirements-fr-nfr.md) | Functional & non-functional requirements with targets |
+| [10-requirement-gathering-questions.md](10-requirement-gathering-questions.md) | Checkout.com-specific requirement gathering questions |

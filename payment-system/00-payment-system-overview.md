@@ -172,7 +172,7 @@ Kafka consumer (Payment Processor)
     └──► Webhook Dispatcher picks up completion/failure event
             └── POST to merchant's webhook URL (with HMAC signature)
                 ├── 200 OK → done
-                └── Failure → retry (exponential backoff) → DLQ after max retries
+                └── Failure → retry (exponential backoff + jitter) → DLQ after max retries
 ```
 
 ### Payment Status State Machine
@@ -352,8 +352,8 @@ Data Warehouse   ── Analytics, reconciliation, reporting (via CDC)
 | **Money can't be lost** | Kafka persists events before processing continues |
 | **Double-charging** | Idempotency keys (Redis SETNX + DB unique constraint) |
 | **Auditing** | Append-only ledger, never update or delete |
-| **Bank failures** | Retry (exponential backoff) + timeout + circuit breaker + DLQ |
-| **Compliance** | PSP hosted page (PCI DSS), TLS/mTLS (encryption), GDPR (data residency) |
+| **Bank failures** | Retry (exponential backoff + jitter) + timeout + circuit breaker + DLQ |
+| **Compliance** | PSP hosted page (PCI DSS), TLS/mTLS (encryption), UK GDPR (data residency) |
 | **Observability** | Metrics (Prometheus/Datadog), tracing (OpenTelemetry), alerting (P1–P4 severity) |
 | **Scalability** | Kafka decouples producers/consumers, K8s auto-scaling, DB read replicas + sharding |
 | **Security** | API Gateway (auth, rate limiting, WAF), mTLS internal, encryption at rest |
@@ -365,12 +365,13 @@ Data Warehouse   ── Analytics, reconciliation, reporting (via CDC)
 | File | What It Covers |
 |------|---------------|
 | **00-payment-system-overview.md** | **This file** — architecture, components, flows |
-| [01-reliability-patterns.md](01-reliability-patterns.md) | Retry, timeout, fallback, Kafka, DLQ, async vs sync |
-| [02-idempotency.md](02-idempotency.md) | Exactly-once guarantee, UUID keys, DB constraints |
-| [03-security.md](03-security.md) | Encryption, TLS, PCI DSS, access controls |
+| [01-reliability-patterns.md](01-reliability-patterns.md) | Retry + jitter, timeout, fallback, circuit breaker, Kafka, DLQ |
+| [02-idempotency.md](02-idempotency.md) | Two-layer idempotency (Redis SETNX + DB constraint), exactly-once guarantee |
+| [03-security.md](03-security.md) | Encryption, TLS/mTLS, PCI DSS, tokenization, UK compliance |
 | [04-interview-cheat-sheet.md](04-interview-cheat-sheet.md) | Quick-reference for interview day |
 | [05-recruiter-briefing.md](05-recruiter-briefing.md) | Recruiter's guidance, checklist, study priorities |
 | [06-values-interview.md](06-values-interview.md) | Values interview (STAR framework) |
 | [07-data-layer.md](07-data-layer.md) | SQL vs NoSQL, CAP theorem, PostgreSQL, Redis, data warehouse |
-| [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs for every decision |
+| [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, hosting, observability |
 | [09-requirements-fr-nfr.md](09-requirements-fr-nfr.md) | Functional & non-functional requirements |
+| [10-requirement-gathering-questions.md](10-requirement-gathering-questions.md) | Checkout.com-specific requirement gathering questions |

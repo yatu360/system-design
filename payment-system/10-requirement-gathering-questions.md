@@ -21,7 +21,7 @@
 | **Merchant using Checkout.com** | A merchant's backend that calls Checkout.com's API — payment orchestration, idempotency, webhooks, dashboard | Easier — Checkout.com handles card data, 3DS, acquiring, settlement |
 | **Hybrid / specific component** | A single component — e.g., "design the webhook delivery system" or "design the reconciliation pipeline" | Focused — go deep on one area |
 
-> **Follow-up:** "And for the Sports API — is that a separate system, or does it share infrastructure with the payment platform?"
+> **Follow-up:** "And is the dashboard a merchant-facing product, an internal ops tool, or both?"
 
 ---
 
@@ -48,26 +48,17 @@
 | 10 | "What aggregations matter most — **transaction volume**, **success/failure rates**, **revenue**, **chargeback rate**? Per merchant?" | Shapes the data warehouse queries and materialized views | Checkout.com's dashboard surfaces per-merchant metrics, chargeback rates (critical for card network compliance) |
 | 11 | "Does the dashboard include **dispute/chargeback management** — viewing disputes, submitting evidence, tracking outcomes?" | Chargebacks are a major operational concern for a PSP | Checkout.com provides dispute management tooling in their dashboard |
 
-### Sports API Scope
-
-| # | Question | Why You're Asking |
-|---|----------|-------------------|
-| 12 | "For the Sports API — is this a **data ingestion** system (consuming live scores, odds, stats from providers) or a **serving API** (our clients query us for sports data)?" | Completely different architecture depending on direction of data flow |
-| 13 | "What's the freshness requirement — **real-time** (sub-second for live scores/odds) or **near real-time** (seconds of lag acceptable)?" | Real-time = WebSocket/SSE, event-driven. Near real-time = polling, caching |
-| 14 | "Is the Sports API a **separate system** with its own infrastructure, or does it share services with the payment platform?" | Determines if you draw one architecture or two |
-| 15 | "What's the read-to-write ratio? Sports data is likely **read-heavy** — thousands of clients querying, few sources writing?" | Drives caching strategy, read replicas, CDN decisions |
-
 ---
 
 ## Non-Functional Requirements — How Well Does It Need to Work?
 
 | # | Question | Why You're Asking | What to Listen For |
 |---|----------|-------------------|--------------------|
-| 16 | "What **scale** are we designing for — transactions per second? Are we talking hundreds, thousands, or Checkout.com-scale (**tens of thousands TPS**)?" | Checkout.com processes $250B+ annually. Scale drives every architectural decision | If they say "Checkout.com scale" — you need Kafka, sharding, multi-region |
-| 17 | "What's the **latency target** for payment API responses? I'm assuming sub-second for the synchronous accept, with async processing behind it?" | Validates the accept-fast-process-async pattern | Most PSPs target <500ms for the API response, 1-5s for full processing |
-| 18 | "What **availability** target — **four nines** (99.99%) for the payment API? Higher?" | Payment downtime = lost revenue for every merchant. Drives redundancy decisions | Checkout.com likely targets 99.99%+ for their core API |
-| 19 | "**Zero data loss** for payment records — is that a given, or should I validate?" | Shows you understand financial data durability is non-negotiable | Always yes — RPO = 0 for payment events |
-| 20 | "For consistency — **strong consistency** for payment state, **eventual consistency** acceptable for dashboard reads?" | Shows CAP awareness per operation, not per system | Standard pattern — CP for payments, AP for dashboards |
+| 12 | "What **scale** are we designing for — transactions per second? Are we talking hundreds, thousands, or Checkout.com-scale (**tens of thousands TPS**)?" | Checkout.com processes $250B+ annually. Scale drives every architectural decision | If they say "Checkout.com scale" — you need Kafka, sharding, multi-region |
+| 13 | "What's the **latency target** for payment API responses? I'm assuming sub-second for the synchronous accept, with async processing behind it?" | Validates the accept-fast-process-async pattern | Most PSPs target <500ms for the API response, 1-5s for full processing |
+| 14 | "What **availability** target — **four nines** (99.99%) for the payment API? Higher?" | Payment downtime = lost revenue for every merchant. Drives redundancy decisions | Checkout.com likely targets 99.99%+ for their core API |
+| 15 | "**Zero data loss** for payment records — is that a given, or should I validate?" | Shows you understand financial data durability is non-negotiable | Always yes — RPO = 0 for payment events |
+| 16 | "For consistency — **strong consistency** for payment state, **eventual consistency** acceptable for dashboard reads?" | Shows CAP awareness per operation, not per system | Standard pattern — CP for payments, AP for dashboards |
 
 ---
 
@@ -75,9 +66,9 @@
 
 | # | Question | Why You're Asking | Checkout.com Context |
 |---|----------|-------------------|---------------------|
-| 21 | "Since we're UK-based and **FCA-regulated** — are there specific compliance constraints I should design around? PCI DSS Level 1, PSD2/SCA, UK GDPR data residency?" | Shows you know Checkout.com's regulatory environment | Checkout.com is FCA-authorised, PCI DSS Level 1, PSD2-compliant. All three matter |
-| 22 | "For **data residency** — does UK customer data need to stay in UK data centres, or is EEA acceptable post-Brexit?" | Post-Brexit UK GDPR has specific data adequacy rules | Checkout.com has UK and EU infrastructure — this is a real concern for them |
-| 23 | "If we're the PSP — are we in **full PCI DSS scope** (Level 1, handling raw card data), or can we reduce scope with tokenization?" | If designing Checkout.com itself, they're Level 1. If merchant-side, scope is reduced | Checkout.com is PCI DSS Level 1 — they handle raw card data in their vault |
+| 17 | "Since we're UK-based and **FCA-regulated** — are there specific compliance constraints I should design around? PCI DSS Level 1, PSD2/SCA, UK GDPR data residency?" | Shows you know Checkout.com's regulatory environment | Checkout.com is FCA-authorised, PCI DSS Level 1, PSD2-compliant. All three matter |
+| 18 | "For **data residency** — does UK customer data need to stay in UK data centres, or is EEA acceptable post-Brexit?" | Post-Brexit UK GDPR has specific data adequacy rules | Checkout.com has UK and EU infrastructure — this is a real concern for them |
+| 19 | "If we're the PSP — are we in **full PCI DSS scope** (Level 1, handling raw card data), or can we reduce scope with tokenization?" | If designing Checkout.com itself, they're Level 1. If merchant-side, scope is reduced | Checkout.com is PCI DSS Level 1 — they handle raw card data in their vault |
 
 ---
 
@@ -85,9 +76,9 @@
 
 | # | Question | Why You're Asking |
 |---|----------|-------------------|
-| 24 | "Any **cloud provider** preference — AWS, GCP, Azure? Or multi-cloud?" | Shapes which managed services you reference |
-| 25 | "**Single region** (UK) to start, or **multi-region** from day one?" | Multi-region adds replication, routing, data residency complexity |
-| 26 | "Are there existing systems or **legacy constraints** I should design around, or is this greenfield?" | In an interview, usually greenfield — but asking shows maturity |
+| 20 | "Any **cloud provider** preference — AWS, GCP, Azure? Or multi-cloud?" | Shapes which managed services you reference |
+| 21 | "**Single region** (UK) to start, or **multi-region** from day one?" | Multi-region adds replication, routing, data residency complexity |
+| 22 | "Are there existing systems or **legacy constraints** I should design around, or is this greenfield?" | In an interview, usually greenfield — but asking shows maturity |
 
 ---
 
@@ -111,8 +102,8 @@ designing a merchant's system that integrates with a PSP like Checkout.com?
 
 I'm assuming the Payment API needs to handle payment creation with auth and capture, 
 refunds, status queries, and webhook notifications to merchants. The dashboard surfaces 
-transaction data, success rates, and chargeback metrics. And the Sports API is a 
-separate read-heavy system with different consistency and latency requirements.
+transaction data, success rates, and chargeback metrics — used by merchants and 
+potentially internal ops.
 
 For non-functionals, I'm targeting 99.99% availability, sub-second API latency, 
 zero data loss, and UK compliance — PCI DSS, PSD2/SCA, UK GDPR, FCA.
