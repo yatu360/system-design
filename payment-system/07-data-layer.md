@@ -95,7 +95,7 @@ Partition happens ──► You MUST choose:
 | **Redis Cache** | **AP** | Cache is a convenience, not source of truth. Stale cache → fall through to PostgreSQL | Serves potentially stale data. Worst case: idempotency check misses → PostgreSQL catches it |
 | **Dashboard** | **AP** | Showing transactions from 5 seconds ago is fine. Showing nothing is worse | Serves slightly stale aggregations. User sees data, just not real-time |
 | **Webhook Dispatcher** | **AP** | Better to deliver a notification late than not at all. DLQ catches failures | Continues dispatching from queue. May deliver out of order — merchants handle with timestamps |
-| **Sports API** | **AP** | A score that's 2 seconds behind is fine. An error page is not | Serves last-known data. Users get stale scores rather than errors |
+| **Dashboard (read model)** | **AP** | Showing transactions from 5 seconds ago is fine. An error page is not | Serves last-known aggregations. Users get stale data rather than errors |
 
 ### CP vs AP — Database Mapping
 
@@ -152,7 +152,7 @@ Payment System
 | "Is your payment system CP or AP?" | **It's both — per operation.** Payment writes and balances are CP (correctness over availability). Dashboard and cache are AP (availability over freshness). |
 | "Why not just make everything CP?" | Because users would see errors on the dashboard when a minor network blip occurs. The dashboard doesn't need real-time accuracy — showing a slightly stale view is better than showing nothing. |
 | "Why not just make everything AP?" | Because showing a stale wallet balance could allow a merchant to withdraw money they don't have. Financial data must be correct NOW. |
-| "How does this affect your database choice?" | PostgreSQL (CP) for the payment core — I need ACID and strong consistency. Redis (AP) for caching — speed matters more than freshness. DynamoDB/Cassandra (AP) for the sports API — high availability and scale over strict consistency. |
+| "How does this affect your database choice?" | PostgreSQL (CP) for the payment core — I need ACID and strong consistency. Redis (AP) for caching — speed matters more than freshness. Data warehouse (AP) for dashboard reads — eventual consistency is fine for analytics. |
 
 ---
 

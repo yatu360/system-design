@@ -182,3 +182,7 @@ This is clearly what they're scoring hardest on. Don't just name a technology �
 | [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, hosting, observability, infra |
 | [09-requirements-fr-nfr.md](09-requirements-fr-nfr.md) | Functional & non-functional requirements with targets |
 | [10-requirement-gathering-questions.md](10-requirement-gathering-questions.md) | Checkout.com-specific requirement gathering questions |
+| [11-interview-walkthrough.md](11-interview-walkthrough.md) | Full interview flow — what to say, in order, with trade-offs |
+| [12-kafka-fundamentals.md](12-kafka-fundamentals.md) | Kafka core concepts, partition ordering, replication, delivery semantics |
+| [13-kafka-cheat-sheet.md](13-kafka-cheat-sheet.md) | Kafka quick reference — 10 key concepts, config, failure scenarios |
+| [14-bank-inventory-saga.md](14-bank-inventory-saga.md) | Bank-to-inventory design — Saga pattern, compensating actions |
