@@ -202,7 +202,152 @@ POST   /v1/webhooks
 
 ---
 
-### 4.3 Payment Lifecycle
+### 4.3 Kafka & Event Flow
+
+**One topic, one producer, four consumers:**
+
+The Payment Service is the only producer. It publishes JSON events to a single `payment-events` topic, partitioned by `payment_id`:
+
+```json
+{
+  "event_type": "PaymentCaptured",
+  "payment_id": "pay_abc",
+  "merchant_id": "merchant_123",
+  "amount": 5000,
+  "currency": "GBP",
+  "timestamp": "2026-05-04T10:30:00Z"
+}
+```
+
+**Four independent consumer groups** read from the same topic. Each checks `event_type` and acts or ignores:
+
+| Consumer Group | Reacts To | Action |
+|---|---|---|
+| **Payment Processor** | `PaymentCreated` | Calls PSP → acquiring bank → card network → issuing bank |
+| **Webhook Dispatcher** | All status changes | POSTs to merchant's endpoint (retry + DLQ) |
+| **Wallet Service** | `PaymentCaptured` | Credits merchant balance |
+| **Ledger Service** | `PaymentCaptured` | Appends balanced debit + credit entries |
+
+**Key talking points:**
+- **Why one topic:** "Same partition key, same retention, same ordering needs. I'd split only if retention policies or partitioning needs diverge."
+- **Why Kafka over direct calls:** "Consumers pull at their own pace — if the Ledger is slow, it doesn't block webhooks or wallet updates. That's the decoupling."
+- **Ordering guarantee:** "Partition key is `payment_id` — all events for one payment land in the same partition, processed in order. PENDING before CAPTURED, guaranteed."
+- **DLQ:** "Messages that fail after max retries go to `payment-events-dlq` — isolate bad messages without blocking healthy traffic."
+
+**Trade-off:** "One topic is simpler to operate but means all consumers see all events. At our scale (1K-10K TPS) this is fine — consumers filter cheaply. If we hit 100K+ TPS with very different retention needs, I'd split into separate topics."
+
+---
+
+### 4.4 Redis
+
+**What it does in our system — three jobs, all sub-millisecond:**
+
+| Job | Key Pattern | Value | TTL |
+|---|---|---|---|
+| **Idempotency** | `idempotency:{uuid}` | `{"status":"PENDING","payment_id":"pay_abc"}` | 24 hours |
+| **Rate limiting** | `ratelimit:{merchant_id}:{window}` | `count (integer)` | 1 second |
+| **Cache** | `payment:{payment_id}` | Full payment object (JSON) | 5 minutes |
+
+**Example — idempotency check:**
+
+```
+Client sends: POST /v1/payments
+              Header: Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+
+Redis command:
+  SETNX idempotency:550e8400-e29b-41d4-a716-446655440000
+        '{"status":"PENDING","payment_id":"pay_abc"}'
+
+  Key exists?  → Return cached result (duplicate request, no processing)
+  Key is new?  → Set with 24h TTL, continue to PostgreSQL
+```
+
+**Example — rate limiting (sliding window):**
+
+```
+Redis command:
+  INCR ratelimit:merchant_123:1714830000
+  EXPIRE ratelimit:merchant_123:1714830000 1
+
+  Count > 1000? → Return 429 Too Many Requests
+  Count ≤ 1000? → Allow through
+```
+
+**Key talking points:**
+- **Why Redis over DB for idempotency:** "Sub-ms response. We check idempotency on every request — hitting PostgreSQL for that adds 5-10ms per request under load. Redis catches 99% of duplicates before they touch the DB."
+- **Why Redis AND DB:** "Redis is the speed layer, DB unique constraint is the safety net. Redis can lose data on restart — the DB constraint guarantees correctness even if Redis fails."
+- **Why not Redis as primary store:** "Redis is in-memory, not durable by default. Payment state lives in PostgreSQL. Redis is a speed layer, not a source of truth."
+
+**Trade-off:** "Extra infrastructure to operate. But for a payment system at 1K-10K TPS, the alternative — hitting PostgreSQL on every idempotency check — adds unacceptable latency. Redis is the right tool here."
+
+---
+
+### 4.5 Idempotency
+
+**The problem:** A customer clicks "Pay" twice, or a network timeout triggers an automatic retry. Without idempotency, you charge them twice.
+
+**The solution — two layers:**
+
+```
+Request arrives with Idempotency-Key: 550e8400...
+
+Layer 1: REDIS (speed)
+─────────────────────
+  SETNX idempotency:550e8400... → key exists? return cached result
+                                → key new? set TTL 24h, continue
+  Speed: < 1ms
+  Catches: 99% of duplicates
+
+Layer 2: POSTGRESQL (safety)
+────────────────────────────
+  INSERT INTO payment_orders (id, ...) VALUES ('550e8400...', ...)
+  → unique constraint violation? return existing payment
+  → success? payment created
+  Speed: 5-10ms
+  Catches: the 1% that slip through (Redis restart, network partition)
+```
+
+**Why two layers — say this:**
+> "Redis is fast but not durable — if it restarts, keys are gone. The DB unique constraint is slow but guaranteed. Together: speed for the happy path, correctness for edge cases. Belt and suspenders."
+
+**Full flow with timeline:**
+
+```
+T=0ms   Client sends POST /v1/payments (Idempotency-Key: 550e8400)
+T=1ms   Redis SETNX → key is new → set with 24h TTL
+T=6ms   PostgreSQL INSERT → succeeds (unique constraint passes)
+T=8ms   Kafka publish PaymentCreated event
+T=10ms  Return 202 Accepted {payment_id: "pay_abc", status: "PENDING"}
+
+T=50ms  Client retries same request (timeout, didn't see response)
+T=51ms  Redis SETNX → KEY EXISTS → return cached {payment_id: "pay_abc"}
+        ← No DB hit, no Kafka event, no duplicate processing
+```
+
+**If Redis is down:**
+
+```
+T=0ms   Client sends POST /v1/payments (Idempotency-Key: 550e8400)
+T=1ms   Redis SETNX → connection refused (Redis down)
+T=6ms   PostgreSQL INSERT → succeeds (first time)
+T=10ms  Return 202 Accepted
+
+T=50ms  Client retries
+T=51ms  Redis SETNX → connection refused (still down)
+T=56ms  PostgreSQL INSERT → UNIQUE CONSTRAINT VIOLATION → return existing payment
+        ← DB catches the duplicate. Slower, but correct.
+```
+
+**Key talking points:**
+- **Client generates the key:** "UUID generated client-side, sent in HTTP header. This is critical — the server can't generate idempotency keys because it doesn't know if the client's previous request succeeded."
+- **TTL choice:** "24 hours. Long enough to cover retries and reconciliation. Short enough to not fill Redis memory. Configurable per merchant if needed."
+- **What we store in Redis:** "Not just a flag — we store the response. So on duplicate, we can return the exact same response without any processing."
+
+**Trade-off:** "Two systems to maintain for one guarantee. But the cost of double-charging a customer — refund, support ticket, trust damage, potential chargeback — far exceeds the operational cost of Redis."
+
+---
+
+### 4.6 Payment Lifecycle
 
 **This is not a single "pay" step — walk through the real card flow:**
 
@@ -226,7 +371,7 @@ Authorization ──► Capture ──► Settlement
 
 ---
 
-### 4.4 Reliability
+### 4.7 Reliability
 
 **The stack, in order — each layer protects against something different:**
 
@@ -244,7 +389,7 @@ Authorization ──► Capture ──► Settlement
 
 ---
 
-### 4.5 Security & Compliance
+### 4.8 Security & Compliance
 
 **Four regulations, four solutions — keep it tight:**
 
@@ -263,7 +408,7 @@ Authorization ──► Capture ──► Settlement
 
 ---
 
-### 4.6 Observability
+### 4.9 Observability
 
 **Three pillars — say this:**
 > "Metrics tell us something is wrong. Logs tell us what happened. Traces tell us where."
@@ -283,7 +428,7 @@ Authorization ──► Capture ──► Settlement
 
 ---
 
-### 4.7 Infrastructure
+### 4.10 Infrastructure
 
 **Compute:**
 > "Kubernetes for payment core — predictable latency, no cold starts, sidecar mTLS, horizontal pod autoscaling. Lambda for webhook dispatcher — spiky, stateless, cold starts acceptable for async."
