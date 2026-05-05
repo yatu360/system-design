@@ -490,7 +490,7 @@ Retry (exponential backoff + jitter)
 | **DB replication** | Synchronous | Asynchronous | Sync = zero data loss but higher write latency. Async = fast writes but risk data loss on failover |
 | **Data residency** | All data in one region | Data stays in user's region | One region = simpler. Per-region = **UK GDPR** compliance — UK customer data should reside in UK/EEA data centres |
 
-> **Principal call:** "Active-passive for payments. Write conflicts in financial data are unacceptable — I'd rather have one primary region (UK, for **FCA regulatory proximity and UK GDPR data residency**) with async replicas for reads and failover. Active-active for the sports API is fine — stale scores for 2 seconds are acceptable, stale balances are not."
+> **Principal call:** "Active-passive for payments. Write conflicts in financial data are unacceptable — I'd rather have one primary region (UK, for **FCA regulatory proximity and UK GDPR data residency**) with async replicas for reads and failover. Active-active for the dashboard is fine — stale metrics for a few seconds are acceptable, stale balances are not."
 
 ### Deployment Strategies
 
@@ -536,7 +536,7 @@ Retry (exponential backoff + jitter)
 | **Resiliency** | Circuit breaker + DLQ | Protect downstream + no data loss | Delayed processing during outages | Real-time requirement can't tolerate delays |
 | **Infra** | Kubernetes | Predictable latency, sidecar support | K8s operational complexity | Small team → managed ECS or even VMs |
 | **Infra** | Canary deployments | Low-risk rollouts | Slower full rollout | Emergency hotfix → blue-green for speed |
-| **Infra** | Active-passive multi-region | No write conflicts for payments | Higher latency for distant users | Sports API → active-active is fine |
+| **Infra** | Active-passive multi-region | No write conflicts for payments | Higher latency for distant users | Dashboard → active-active is fine |
 
 ---
 

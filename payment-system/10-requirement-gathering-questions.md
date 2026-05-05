@@ -144,3 +144,8 @@ These are the questions that signal "this person has done their homework":
 | [08-trade-offs.md](08-trade-offs.md) | Stage-by-stage trade-offs, hosting, observability |
 | [09-requirements-fr-nfr.md](09-requirements-fr-nfr.md) | Functional & non-functional requirements |
 | **10-requirement-gathering-questions.md** | **This file — Checkout.com-specific questions** |
+| [11-interview-walkthrough.md](11-interview-walkthrough.md) | Full interview flow — what to say, in order, with trade-offs |
+| [12-kafka-fundamentals.md](12-kafka-fundamentals.md) | Kafka core concepts, partition ordering, replication, delivery semantics |
+| [13-kafka-cheat-sheet.md](13-kafka-cheat-sheet.md) | Kafka quick reference — 10 key concepts, config, failure scenarios |
+| [14-bank-inventory-saga.md](14-bank-inventory-saga.md) | Bank-to-inventory design — Saga pattern, compensating actions |
+| [15-database-sharding.md](15-database-sharding.md) | Sharding by merchant_id, lookup table, hot merchants, data residency |

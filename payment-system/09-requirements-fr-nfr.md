@@ -209,4 +209,4 @@ Does this align with what you'd expect, or should I adjust any of these targets?
 
 ---
 
-**Next:** [08-trade-offs.md](./08-trade-offs.md) — Trade-offs for every architectural decision
+**Next:** [10-requirement-gathering-questions.md](./10-requirement-gathering-questions.md) — Checkout.com-specific requirement gathering questions

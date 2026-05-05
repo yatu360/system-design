@@ -208,7 +208,7 @@ payment_orders (
     merchant_id     UUID NOT NULL,
     amount          DECIMAL(19,4) NOT NULL,  -- DECIMAL, never FLOAT for money
     currency        VARCHAR(3) NOT NULL,     -- ISO 4217 (USD, GBP, EUR)
-    status          VARCHAR(20) NOT NULL,    -- PENDING → PROCESSING → SUCCESS / FAILED
+    status          VARCHAR(20) NOT NULL,    -- PENDING → AUTHORIZED → CAPTURED → SETTLED (see 00-payment-system-overview.md)
     psp_reference   VARCHAR(255),
     created_at      TIMESTAMP NOT NULL,
     updated_at      TIMESTAMP NOT NULL

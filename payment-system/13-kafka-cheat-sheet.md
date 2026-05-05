@@ -63,15 +63,15 @@ Payment Service (PRODUCER)
 
 | Setting | Value | Why |
 |---|---|---|
-| **Topics** | `payment-events`, `payment-status-changes`, `webhook-events` | Separate streams for different purposes |
+| **Topics** | `payment-events` + `payment-events-dlq` | One main topic, one DLQ for failed messages |
 | **Partition key** | `payment_id` | All events for one payment stay in order |
 | **Partitions per topic** | 12 | Enough parallelism for peak, room to grow |
 | **Replication factor** | 3 | Survive loss of 2 brokers |
 | **min.insync.replicas** | 2 | Write only succeeds if 2 of 3 copies confirm |
 | **acks** | all | No payment event is ever lost |
-| **Retention** | 30 days (`payment-events`), compacted (`payment-status-changes`) | 30 days for replay and reconciliation; compacted for current-state lookups |
+| **Retention** | 30 days (`payment-events`), 90 days (DLQ) | 30 days for replay and reconciliation; DLQ kept longer for investigation |
 | **Offset commit** | Manual, after processing | Accept redelivery over data loss |
-| **Consumer groups** | payment-processor, ledger-service, wallet-service, webhook-dispatcher | Each reads all events independently, does its own job |
+| **Consumer groups** | payment-processor, ledger-service, wallet-service, webhook-dispatcher | Each reads all events independently, filters by event_type |
 
 ---
 
@@ -137,7 +137,7 @@ Payment Service (PRODUCER)
 > "Replication factor 3, min.insync.replicas 2, acks=all. The event is confirmed on at least 2 brokers before the producer gets an acknowledgement. One broker can die immediately — the event survives."
 
 **"What's log compaction vs retention?"**
-> "Retention deletes messages after N days — we use 30-day retention on `payment-events` for replay. Compaction keeps only the latest value per key — used on `payment-status-changes` where services only need the current state of each payment."
+> "Retention deletes messages after N days — we use 30-day retention on `payment-events` for replay. Compaction keeps only the latest value per key — useful if you had a topic where services only need the current state of each payment rather than the full history. We don't use compaction in our design — we use retention-based cleanup."
 
 **"What if you need more parallelism than partitions allow?"**
 > "Increase the partition count. Can't decrease it without recreating the topic, so we start with headroom. If a single partition is hot, it's usually a partition key issue — `payment_id` distributes evenly because UUIDs hash uniformly."

@@ -25,13 +25,14 @@ Each reader has their own bookmark. They read at their own pace. If one falls be
 
 A **topic** is a named stream of events. Think of it as a separate notebook for each type of event.
 
-**Our payment system has 3 topics:**
+**Our payment system has 1 main topic + 1 DLQ:**
 
 | Topic | What Goes In It | Who Reads It |
 |---|---|---|
 | `payment-events` | Every payment lifecycle event (created, authorized, captured, settled, refunded) | payment-processor, ledger-service, wallet-service, webhook-dispatcher |
-| `payment-status-changes` | Only status transitions (e.g. AUTHORIZED → CAPTURED) | webhook-dispatcher, data-warehouse |
-| `webhook-events` | Outbound webhook delivery attempts and results | monitoring, retry-handler |
+| `payment-events-dlq` | Messages that failed after max retries | ops team (manual review and replay) |
+
+> **Why one topic?** Same partition key (`payment_id`), same retention needs, same ordering requirement. All 4 consumer groups read from the same topic and filter by `event_type`. Splitting into multiple topics only makes sense when retention policies or partitioning needs diverge.
 
 ---
 
@@ -416,7 +417,7 @@ After compaction:
 | Our Topic | Strategy | Why |
 |---|---|---|
 | `payment-events` | Time-based, 30 days | Need full history for replay and reconciliation |
-| `payment-status-changes` | Log compaction | Other services only care about the current status, not the history |
+| `payment-events-dlq` | Time-based, 90 days | Keep failed messages longer for investigation |
 
 ---
 
@@ -479,7 +480,7 @@ After compaction:
 > "At-least-once from Kafka — commit offset after processing, so we never lose a message. If a message is redelivered, our two-layer idempotency catches the duplicate: Redis SETNX checks in sub-millisecond, DB unique constraint is the safety net. Effectively exactly-once without Kafka transactions. Kafka's built-in exactly-once only works within Kafka — our processing goes outside to PSPs and banks, so we handle it at the application layer."
 
 **Q: What's the difference between log compaction and retention?**
-> "Retention deletes messages older than N days — we use 30-day retention on `payment-events` for replay and reconciliation. Compaction keeps only the latest value per key — useful for a `payment-status-changes` topic where other services only care about the current state of each payment, not the full history."
+> "Retention deletes messages older than N days — we use 30-day retention on `payment-events` for replay and reconciliation. Compaction keeps only the latest value per key — useful if we ever split a dedicated status topic where consumers only care about the current state of each payment, not the full history. For our single-topic design, time-based retention is sufficient."
 
 **Q: How do you handle consumer rebalancing?**
 > "When a consumer joins, leaves, or crashes, Kafka reassigns partitions across the remaining consumers in the group. During rebalancing, the group briefly pauses consumption. We minimize disruption by using sticky partition assignment (consumers keep their existing partitions where possible) and setting reasonable session timeouts to avoid unnecessary rebalances from slow consumers."

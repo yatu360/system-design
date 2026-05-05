@@ -186,3 +186,4 @@ This is clearly what they're scoring hardest on. Don't just name a technology �
 | [12-kafka-fundamentals.md](12-kafka-fundamentals.md) | Kafka core concepts, partition ordering, replication, delivery semantics |
 | [13-kafka-cheat-sheet.md](13-kafka-cheat-sheet.md) | Kafka quick reference — 10 key concepts, config, failure scenarios |
 | [14-bank-inventory-saga.md](14-bank-inventory-saga.md) | Bank-to-inventory design — Saga pattern, compensating actions |
+| [15-database-sharding.md](15-database-sharding.md) | Sharding by merchant_id, lookup table, hot merchants, data residency |

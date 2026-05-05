@@ -120,6 +120,41 @@ PENDING → AUTHORIZED → CAPTURED → SETTLED → (REFUNDED or DISPUTED)
 
 ---
 
+## API Response Codes (Quick Reference)
+
+| Code | When | Retryable? |
+|---|---|---|
+| **202 Accepted** | Payment accepted for async processing | N/A — poll or wait for webhook |
+| **400 Bad Request** | Invalid fields, malformed JSON | No — fix request |
+| **401 Unauthorized** | Missing/invalid API key or JWT | No — fix credentials |
+| **409 Conflict** | Same idempotency key, different body | No — client bug |
+| **422 Unprocessable** | Business logic fail (e.g., refund > original) | No — fix logic |
+| **429 Rate Limited** | Too many requests | Yes — wait for `Retry-After` |
+| **502 Bad Gateway** | Upstream (bank/PSP) failed — we're fine | Yes — exponential backoff + idempotency key |
+| **503 Service Unavailable** | WE are down | Yes — wait for `Retry-After` |
+| **504 Gateway Timeout** | Upstream (bank/PSP) didn't respond | Yes — exponential backoff + idempotency key |
+
+**Error code translation (what we receive → what we return):**
+```
+Bank returns 503    → we return 502  (our upstream failed, not us)
+Bank doesn't respond → we return 504  (our upstream timed out)
+WE are overloaded   → we return 503  (we ourselves can't serve)
+Bank declines       → we return 200 + decline_code (not an HTTP error)
+```
+
+> **In our async design:** merchants rarely see 502/504. They get 202 immediately, bank failures happen async → webhook with `"status": "FAILED"`.
+
+**Error response format:**
+```json
+{"error": {"type": "invalid_request", "code": "missing_required_field", "message": "...", "request_id": "req_abc123"}}
+```
+
+**Decline codes (payment-specific):** `insufficient_funds` (retryable), `card_expired` (not), `do_not_honor` (maybe), `stolen_card` (not), `3ds_failed` (retryable)
+
+**Key rule:** 4xx = client's fault (don't retry without changes). 5xx = our fault (safe to retry with idempotency key).
+
+---
+
 ## The Reliability Stack (Order Matters)
 
 ```
@@ -152,12 +187,34 @@ Layer 8: MONITORING        ──► "We know when something is wrong"
 - [ ] **Reliability** — Kafka persistence, retry + jitter, circuit breakers, DLQ
 - [ ] **Idempotency** — Redis SETNX + DB unique constraints, exactly-once
 - [ ] **Security** — TLS/mTLS, encryption at rest, PSP hosted page, tokenization
-- [ ] **Scalability** — Async-first, Kafka decoupling, K8s auto-scaling
+- [ ] **Scalability** — Async-first, Kafka decoupling, K8s auto-scaling, sharding by merchant_id
 - [ ] **Auditability** — Double-entry append-only ledger, reconciliation
 - [ ] **Fault Tolerance** — Circuit breakers, exponential backoff + jitter, fallback, DLQ
 - [ ] **Compliance** — PCI DSS, PSD2/SCA (3DS), UK GDPR, FCA
 - [ ] **Observability** — Metrics + tracing + alerting (three pillars)
 - [ ] **Payment Lifecycle** — Auth → capture → settle, void, refund, chargeback
+
+---
+
+## Deep Dive Topics — Memory Aid
+
+**Three groups (5-4-2):**
+
+| Group | Mnemonic | Topics |
+|---|---|---|
+| **Flow** (5) | "Always Deliver Kafka's Records Intact" | API → Data → Kafka → Redis → Idempotency |
+| **Safety** (4) | "Payments Require Reliable Security" | Payment Lifecycle → Reliability → Retry → Security |
+| **Ops** (2) | "Obviously Infrastructure" | Observability → Infrastructure |
+
+**The formula for every decision:**
+```
+State the choice → Explain why → Acknowledge trade-off → Mitigate
+```
+
+**Interview phases (R-R-A-D-W):**
+```
+Read & Scope (5 min) → Requirements (10 min) → Architecture (15 min) → Deep Dives (45 min) → Wrap Up (10 min)
+```
 
 ---
 
@@ -180,3 +237,4 @@ Layer 8: MONITORING        ──► "We know when something is wrong"
 | [12-kafka-fundamentals.md](12-kafka-fundamentals.md) | Kafka core concepts, partition ordering, replication, delivery semantics |
 | [13-kafka-cheat-sheet.md](13-kafka-cheat-sheet.md) | Kafka quick reference — 10 key concepts, config, failure scenarios |
 | [14-bank-inventory-saga.md](14-bank-inventory-saga.md) | Bank-to-inventory design — Saga pattern, compensating actions |
+| [15-database-sharding.md](15-database-sharding.md) | Sharding by merchant_id, lookup table, hot merchants, data residency |
