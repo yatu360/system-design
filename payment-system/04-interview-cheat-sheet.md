@@ -182,6 +182,29 @@ Layer 8: MONITORING        ──► "We know when something is wrong"
 
 ---
 
+## Functional Requirements Checklist
+
+> State these in the first 5 minutes. "I'm assuming the system needs to..."
+
+### Payment API
+- [ ] **Create Payment** — auth + capture (separate or combined), idempotency key
+- [ ] **Payment Status** — GET polling + webhook push notifications
+- [ ] **Refunds** — full and partial, initiated by merchant via API or dashboard
+- [ ] **Cancellation / Void** — cancel before capture (releases hold, no interchange fees)
+- [ ] **Multi-Currency** — if in scope, clarify who handles FX (us or PSP)
+- [ ] **Webhook Notifications** — push status changes to merchant endpoints (retry + DLQ)
+- [ ] **Idempotency** — client-generated UUID, duplicate requests return original result
+
+### Dashboard
+- [ ] **Transaction List** — paginated, filterable (date, status, amount, merchant)
+- [ ] **Transaction Detail** — full lifecycle timeline, PSP reference, timestamps
+- [ ] **Aggregations** — success rate, revenue, refund rate, chargeback rate (per merchant)
+- [ ] **Real-Time vs Near-Real-Time** — live feed (WebSocket) or periodic refresh?
+- [ ] **Export** — CSV/PDF for merchant reconciliation
+- [ ] **Roles & Permissions** — merchant users vs internal ops vs support
+
+---
+
 ## Non-Functional Requirements Checklist
 
 - [ ] **Reliability** — Kafka persistence, retry + jitter, circuit breakers, DLQ
